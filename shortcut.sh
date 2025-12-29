@@ -1,0 +1,1 @@
+/bin/bash -c 'pgrep -x copyq || (copyq & sleep 0.5); D="$HOME/Pictures/Screenshots"; mkdir -p "$D"; F="$D/$(date +%Y%m%d_%H%M%S).png"; gnome-screenshot -a -f "$F" && copyq copy image/png - < "$F"'

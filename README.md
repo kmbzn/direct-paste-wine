@@ -1,88 +1,93 @@
 # direct-paste-wine 🍷🐧
 
-**리눅스 와인(Wine) 환경에서 카카오톡에 스크린샷을 바로 붙여넣을 수 있는 솔루션**
-**A universal solution for pasting images into Wine applications on Linux.**
+리눅스 Wine 환경 카카오톡에 스크린샷을 바로 붙여넣을 수 있도록 하는 솔루션
 
-### 개요
-리눅스(특히 Ubuntu Wayland) 환경에서 와인을 통해 실행되는 카카오톡, 포토샵 등의 앱에 이미지가 붙여넣어지지 않는 고질적인 문제를 해결합니다. 
+A universal solution for pasting screenshots into Wine applications on Linux.
 
-이 프로젝트의 핵심은 **CopyQ** 엔진을 사용하여 이미지를 클립보드에 주입할 때, 단순한 `.PNG` 형식이 아닌 14가지 이상의 MIME 타입(BMP 포함)으로 동시 주입하여 wine과 Linux 간의 클립보드 호환성 장벽을 완전히 허무는 데 있습니다.
-
-> **핵심 명령어:**
-> `copyq copy image/png - < "이미지파일.png"`
-> *이 한 줄의 명령어가 클립보드에 14개 이상의 호환 형식을 생성하여 주입합니다.*
-
-### 🛠 설치 및 사용 방법
-1. **필수 도구 설치:**
-   ```bash
-   sudo apt update && sudo apt install copyq gnome-screenshot -y
-
-2. **스크립트 생성:** `direct_paste.sh` 파일을 만들고 아래 코드를 복사하여 실행 권한(`chmod +x`)을 부여합니다.
-3. **단축키 등록:** 시스템 설정의 키보드 단축키 메뉴에서 본 스크립트를 `PrintScreen` 또는 원하는 키에 할당하세요.
-
-### Overview
-
-This project comprehensively resolves the frustrating issue of being unable to paste images/screenshots into **Wine-based applications** (like KakaoTalk, Photoshop, MS Office) in Linux environments (especially Ubuntu Wayland).
-
-The breakthrough lies in using the **CopyQ** engine to inject images into the system clipboard with **14+ different MIME types** simultaneously. This ensures that the Wine translation layer provides the legacy formats (like **BMP/DIB**) that Windows applications expect.
-
-> **The Core Logic:**
-> `copyq copy image/png - < "your-image.png"`
-> *Executing this single line triggers CopyQ to generate and inject 14+ compatible formats into the clipboard.*
-
-### 🛠 Installation & Usage
-
-1. **Install Prerequisites:**
-```bash
-sudo apt update && sudo apt install copyq gnome-screenshot -y
-```
-2. **Setup Script:** Create `direct_paste.sh` and give it execution permissions (`chmod +x`).
-3. **Assign Shortcut:** Link this script to a custom keyboard shortcut in your system settings.
-
-## 💻 Script (Common)
+## 필수 도구 설치
+아래 명령어 실행
 
 ```bash
-#!/bin/bash
-
-# 1. CopyQ 서버 확인 및 실행 (Ensure CopyQ is running)
-if ! pgrep -x "copyq" > /dev/null; then
-    copyq &
-    sleep 0.5
-fi
-
-# 2. 경로 설정 및 스크린샷 캡처 (Set path and Capture)
-SAVE_DIR="$HOME/Pictures/Screenshots"
-FILENAME="capture_$(date +%Y%m%d_%H%M%S).png"
-FULL_PATH="$SAVE_DIR/$FILENAME"
-mkdir -p "$SAVE_DIR"
-
-gnome-screenshot -a -f "$FULL_PATH"
-
-# 3. 14가지 형식 클립보드 주입 (Inject 14+ MIME types)
-if [ -f "$FULL_PATH" ]; then
-    copyq copy image/png - < "$FULL_PATH"
-fi
-
+sudo apt update
+sudo apt install copyq gnome-screenshot -y
 ```
 
-## 🛠 Environment
+## 단축키 적용 방법
+![](settings.png)
+설정 → 키보드 → 키보드 바로 가기 → 바로 가기 보기 및 사용자 설정 → 추가(+) → 형식에 맞게 아래 내용 입력
 
-* **OS:** Ubuntu 22.04 LTS (Wayland)
-* **Tested Hardware:** ThinkPad X13 Gen 1
-* **Verified Apps:** KakaoTalk (Wine), Photoshop (Wine), Line, etc.
+| 항목 | 내용
+| - | -
+| 이름 | 스크린샷
+| 명령 | (아래 `shortcut.sh` 명령어 붙여넣으세요)
+| 바로 가기 | `PrtSc`
 
-## 📄 License
+![](format.png)
+
+### `shortcut.sh` 명령어
+```bash
+/bin/bash -c 'pgrep -x copyq || (copyq & sleep 0.5); D="$HOME/Pictures/Screenshots"; mkdir -p "$D"; F="$D/$(date +%Y%m%d_%H%M%S).png"; gnome-screenshot -a -f "$F" && copyq copy image/png - < "$F"'
+```
+
+## 개요
+리눅스(특히 Ubuntu Wayland) 환경에서 wine을 통해 실행되는 카카오톡 등의 앱에 이미지가 붙여넣어지지 않는 고질적인 문제를 해결합니다. 
+
+이 프로젝트의 핵심 아이디어는 스크린샷 이미지를 클립보드에 주입할 때, CopyQ 엔진을 사용하여 단순한 `.PNG` 형식이 아닌 `.BMP` 형식을 포함한 14가지 MIME 타입으로 동시 주입하도록 하여 wine과 GNOME 간의 클립보드 호환성 장벽을 허무는 데 있습니다.
+
+## 🚀 Quick Apply
+
+### Install Prerequisites
+
+Run the following command in your terminal:
+
+```bash
+sudo apt update
+sudo apt install copyq gnome-screenshot -y
+```
+
+### Configure Keyboard Shortcut
+![](settings.png)
+Go to Settings → Keyboard → View and Customize Shortcuts → Custom Shortcuts → Add (+) and enter the following details:
+
+| Field | Value
+| - | -
+| Name | Screenshot
+| Command | *(Copy and paste the one-liner below)*
+| Shortcut | `PrtSc` (or your preferred key)
+
+![](format.png)
+
+#### The Core One-Liner (Command)
+
+```bash
+/bin/bash -c 'pgrep -x copyq || (copyq & sleep 0.5); D="$HOME/Pictures/Screenshots"; mkdir -p "$D"; F="$D/$(date +%Y%m%d_%H%M%S).png"; gnome-screenshot -a -f "$F" && copyq copy image/png - < "$F"'
+```
+
+> Note: Executing this single line triggers CopyQ to generate and inject 14+ compatible formats into the clipboard instantly.
+
+## Overview
+This project resolves the persistent issue where (screenshot) images fail to paste into apps like KakaoTalk running through Wine in Linux environments (especially Ubuntu Wayland). 
+The core idea of this project is to use the CopyQ engine to inject images into the clipboard. Instead of using only the simple `.PNG` format, it simultaneously injects images in 14 different MIME types, including the `.BMP` format. This approach breaks down the clipboard compatibility barrier between Wine and GNOME.
+
+## 🛠 Why it works?
+
+Most Linux screenshot tools only provide `image/png`. However, Windows-based apps (legacy apps) often require `image/bmp` or other specific formats to recognize clipboard content. By piping the `.PNG` data through CopyQ, we force the clipboard to populate 14+ MIME types, fulfilling the requirements of the Wine environment.
+
+
+## 🛠 Tested Environment
+
+| | Version
+| - | -
+| OS | Ubuntu 22.04 LTS
+| GNOME | GNOME Shell 42.9 (Wayland)
+| HW | Lenovo ThinkPad X13 Gen1
+| wine | wine-10.0
+| Verified Apps | KakaoTalk (x64)
+
+## License
 
 This project is licensed under the **MIT License**.
 
----
+Created by **[kmbzn](kmbzn.com)**
 
-**Created by [kmbzn]** - If this tool saved your time, please give it a ⭐!
-
-### 마지막 체크리스트:
-1. **파일 이름:** `README.md`로 저장하여 프로젝트 루트 폴더에 넣으세요.
-2. **사용자 이름:** 마지막 줄의 `[kmbzn]` 부분을 유저님의 실제 닉네임으로 확인해 주세요.
-3. **업로드:** ```bash
-   git add README.md
-   git commit -m "Add bilingual README (Korean & English)"
-   git push origin main
+If this tool saved your time, **please give it a ⭐!**
