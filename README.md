@@ -1,4 +1,4 @@
-# direct-paste-wine 🍷🐧
+# 🐧 direct-paste-wine 🍷
 
 리눅스 Wine 환경 카카오톡에 스크린샷을 바로 붙여넣을 수 있도록 하는 솔루션
 
@@ -88,6 +88,6 @@ Most Linux screenshot tools only provide `image/png`. However, Windows-based app
 
 This project is licensed under the **MIT License**.
 
-Created by **[kmbzn](kmbzn.com)**
+Created by **[kmbzn](https://kmbzn.com)**
 
 If this tool saved your time, **please give it a ⭐!**
