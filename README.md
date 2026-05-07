@@ -2,9 +2,10 @@
 
 리눅스 Wine 환경 카카오톡에 스크린샷을 바로 붙여넣을 수 있도록 하는 솔루션
 
-A universal solution for pasting screenshots into Wine applications on Linux.
+*A universal solution for pasting screenshots into Wine applications on Linux.*
 
 ## 필수 도구 설치
+
 아래 명령어 실행
 
 ```bash
@@ -13,6 +14,7 @@ sudo apt install copyq gnome-screenshot -y
 ```
 
 ## 단축키 적용 방법
+
 ![](settings.png)
 설정 → 키보드 → 키보드 바로 가기 → 바로 가기 보기 및 사용자 설정 → 추가(+) → 형식에 맞게 아래 내용 입력
 
@@ -26,11 +28,11 @@ sudo apt install copyq gnome-screenshot -y
 
 ### `shortcut.sh` 명령어
 ```bash
-/bin/bash -c 'pgrep -x copyq || (copyq & sleep 0.5); D="$HOME/Pictures/Screenshots"; mkdir -p "$D"; F="$D/$(date +%Y%m%d_%H%M%S).png"; gnome-screenshot -a -f "$F" && copyq copy image/png - < "$F"'
+sh -c 'd=~/Pictures/Screenshots; f="$d/screenshot_$(date +%Y%m%d_%H%M%S).png"; mkdir -p "$d"; gnome-screenshot -af "$f" && (copyq p _ || (QT_QPA_PLATFORM=xcb copyq & sleep 0.5)) && copyq copy image/png - < "$f"' 
 ```
 
 ## 개요
-리눅스(특히 Ubuntu Wayland) 환경에서 wine을 통해 실행되는 카카오톡 등의 앱에 이미지가 붙여넣어지지 않는 고질적인 문제를 해결합니다. 
+리눅스(특히 Ubuntu Wayland) 환경에서 wine을 통해 실행되는 카카오톡 등의 앱에 이미지가 붙여넣어지지 않는 문제를 해결합니다. 
 
 이 프로젝트의 핵심 아이디어는 스크린샷 이미지를 클립보드에 주입할 때, CopyQ 엔진을 사용하여 단순한 `.PNG` 형식이 아닌 `.BMP` 형식을 포함한 14가지 MIME 타입으로 동시 주입하도록 하여 wine과 GNOME 간의 클립보드 호환성 장벽을 허무는 데 있습니다.
 
@@ -60,7 +62,7 @@ Go to Settings → Keyboard → View and Customize Shortcuts → Custom Shortcut
 #### The Core One-Liner (Command)
 
 ```bash
-/bin/bash -c 'pgrep -x copyq || (copyq & sleep 0.5); D="$HOME/Pictures/Screenshots"; mkdir -p "$D"; F="$D/$(date +%Y%m%d_%H%M%S).png"; gnome-screenshot -a -f "$F" && copyq copy image/png - < "$F"'
+sh -c 'd=~/Pictures/Screenshots; f="$d/screenshot_$(date +%Y%m%d_%H%M%S).png"; mkdir -p "$d"; gnome-screenshot -af "$f" && (copyq p _ || (QT_QPA_PLATFORM=xcb copyq & sleep 0.5)) && copyq copy image/png - < "$f"' 
 ```
 
 > Note: Executing this single line triggers CopyQ to generate and inject 14+ compatible formats into the clipboard instantly.
@@ -78,10 +80,10 @@ Most Linux screenshot tools only provide `image/png`. However, Windows-based app
 
 | | Version
 | - | -
-| OS | Ubuntu 22.04 LTS
-| GNOME | GNOME Shell 42.9 (Wayland)
+| OS | Ubuntu 24.04 LTS
+| GNOME | GNOME Shell 46.0 (Wayland)
 | HW | Lenovo ThinkPad X13 Gen1
-| wine | wine-10.0
+| wine | wine-11.0
 | Verified Apps | KakaoTalk (x64)
 
 ## License
