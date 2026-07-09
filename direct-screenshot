@@ -1,0 +1,919 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+#
+# direct-screenshot - Screenshot Utility
+# Copyright (C) 2026 kmbzn <kmbzn@kmbzn.com>
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+
+import sys
+import os
+import argparse
+import subprocess
+import shutil
+import json
+from datetime import datetime
+
+import gi
+gi.require_version('Gtk', '3.0')
+from gi.repository import Gio, GLib
+
+# Deferred imports for GTK/Gdk to optimize CLI start time
+Gtk = None
+Gdk = None
+
+# ----------------------------------------------------------------------
+# Internationalization (i18n) Configuration
+# ----------------------------------------------------------------------
+
+def get_locale_lang():
+    lang = os.environ.get('LANG', 'en')
+    if lang.startswith('ko'):
+        return 'ko'
+    return 'en'
+
+LANG = get_locale_lang()
+
+STRINGS = {
+    'ko': {
+        'app_title': "스크린샷 도구",
+        'close': "닫기",
+        'capture': "스크린샷 캡처",
+        'quick_capture': "빠른 캡처",
+        'grab_screen': "전체 화면 캡처",
+        'grab_window': "활성 창 캡처",
+        'grab_area': "영역 지정 캡처",
+        'copy_clipboard': "클립보드에 복사",
+        'save_folder': "폴더에 저장:",
+        'select_folder': "폴더 선택",
+        'shortcuts_config': "단축키 설정",
+        'apply_shortcuts': "단축키 설정 적용",
+        'disabled_gnome': "비활성화 (기본 설정)",
+        'opt_area': "영역 지정 캡처",
+        'opt_screen': "전체 화면 캡처",
+        'opt_window': "활성 창 캡처",
+        'opt_both': "클립보드 복사 및 파일 저장",
+        'opt_clipboard': "클립보드에만 복사",
+        'opt_save': "파일로만 저장",
+        'confirm_text': "Do you want to apply these changes?",
+        'notification_applied_title': "단축키 적용 완료",
+        'notification_applied_body': "키보드 단축키 설정이 업데이트되었습니다.",
+        'notification_saved_copied_title': "스크린샷 저장 및 복사 완료",
+        'notification_saved_copied_body': "{filename} 경로에 저장되고 클립보드에 복사되었습니다.",
+        'notification_copied_title': "스크린샷 복사 완료",
+        'notification_copied_body': "이미지가 클립보드에 복사되었습니다.",
+        'notification_saved_title': "스크린샷 저장 완료",
+        'notification_saved_body': "{filename} 경로에 저장되었습니다.",
+        'notification_complete_title': "스크린샷 완료",
+        'notification_complete_body': "스크린샷이 성공적으로 캡처되었습니다.",
+        'error_file_title': "오류",
+        'error_file_body': "스크린샷 파일을 찾을 수 없습니다.",
+        'custom_shortcut_name': "스크린샷 단축키"
+    },
+    'en': {
+        'app_title': "Screenshot Utility",
+        'close': "Close",
+        'capture': "Take Screenshot",
+        'quick_capture': "Quick Capture",
+        'grab_screen': "Grab the entire screen",
+        'grab_window': "Grab the active window",
+        'grab_area': "Select area to grab",
+        'copy_clipboard': "Copy to Clipboard",
+        'save_folder': "Save to Folder:",
+        'select_folder': "Select Folder",
+        'shortcuts_config': "Keyboard Shortcuts Configuration",
+        'apply_shortcuts': "Apply Shortcuts Settings",
+        'disabled_gnome': "Disabled (GNOME Default)",
+        'opt_area': "Select Area",
+        'opt_screen': "Grab Entire Screen",
+        'opt_window': "Grab Active Window",
+        'opt_both': "Copy to Clipboard & Save File",
+        'opt_clipboard': "Copy to Clipboard Only",
+        'opt_save': "Save File Only",
+        'confirm_text': "Do you want to apply these changes?",
+        'notification_applied_title': "Shortcuts Applied",
+        'notification_applied_body': "Your keyboard shortcuts configuration has been updated.",
+        'notification_saved_copied_title': "Screenshot Saved & Copied",
+        'notification_saved_copied_body': "Saved to {filename} and copied to clipboard.",
+        'notification_copied_title': "Screenshot Copied",
+        'notification_copied_body': "Image copied to clipboard.",
+        'notification_saved_title': "Screenshot Saved",
+        'notification_saved_body': "Saved to {filename}.",
+        'notification_complete_title': "Screenshot Complete",
+        'notification_complete_body': "Screenshot captured successfully.",
+        'error_file_title': "Error",
+        'error_file_body': "Screenshot file was not found.",
+        'custom_shortcut_name': "Custom Screenshot Shortcut"
+    }
+}
+
+def t(key):
+    return STRINGS[LANG].get(key, STRINGS['en'].get(key, key))
+
+# ----------------------------------------------------------------------
+# Settings Persistence Helper Functions
+# ----------------------------------------------------------------------
+
+def load_settings():
+    settings_path = os.path.expanduser("~/.config/direct-screenshot/settings.json")
+    defaults = {
+        'save_dir': os.path.expanduser("~/Pictures/Screenshots"),
+        'save_enabled': True,
+        'clipboard_enabled': True
+    }
+    if not os.path.exists(settings_path):
+        return defaults
+    try:
+        with open(settings_path, "r") as f:
+            data = json.load(f)
+            for k, v in defaults.items():
+                if k not in data:
+                    data[k] = v
+            return data
+    except Exception:
+        return defaults
+
+def save_settings(data):
+    settings_path = os.path.expanduser("~/.config/direct-screenshot/settings.json")
+    try:
+        os.makedirs(os.path.dirname(settings_path), exist_ok=True)
+        with open(settings_path, "w") as f:
+            json.dump(data, f)
+    except Exception as e:
+        print(f"Failed to save settings: {e}", file=sys.stderr)
+
+# ----------------------------------------------------------------------
+# Core Clipboard & OS Helper Functions
+# ----------------------------------------------------------------------
+
+def is_copyq_installed():
+    return shutil.which("copyq") is not None
+
+def is_gnome_screenshot_installed():
+    return shutil.which("gnome-screenshot") is not None
+
+def is_copyq_running():
+    try:
+        res = subprocess.run(['pgrep', '-x', 'copyq'], stdout=subprocess.DEVNULL)
+        return res.returncode == 0
+    except Exception:
+        return False
+
+def inject_to_clipboard(file_path):
+    if not is_copyq_running():
+        env = os.environ.copy()
+        env["QT_QPA_PLATFORM"] = "xcb"
+        try:
+            subprocess.Popen(["copyq"], env=env)
+            subprocess.run(["sleep", "0.5"])
+        except Exception as e:
+            print(f"Failed to launch CopyQ: {e}", file=sys.stderr)
+
+    try:
+        with open(file_path, "rb") as f:
+            img_data = f.read()
+        
+        subprocess.run(
+            ["copyq", "copy", "image/png", "-"],
+            input=img_data,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        return True
+    except Exception as e:
+        print(f"Error copying image to CopyQ: {e}", file=sys.stderr)
+        return False
+
+def send_notification(summary, body):
+    try:
+        connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        proxy = Gio.DBusProxy.new_sync(
+            connection,
+            Gio.DBusProxyFlags.NONE,
+            None,
+            'org.freedesktop.Notifications',
+            '/org/freedesktop/Notifications',
+            'org.freedesktop.Notifications',
+            None
+        )
+        proxy.call_sync(
+            'Notify',
+            GLib.Variant('(susssasa{sv}i)', (
+                t('app_title'),       # app_name
+                0,                    # replaces_id
+                "screenshot",         # app_icon
+                summary,              # summary
+                body,                 # body
+                [],                   # actions
+                {},                   # hints
+                3000                  # expire_timeout
+            )),
+            Gio.DBusCallFlags.NONE,
+            -1,
+            None
+        )
+    except Exception:
+        if shutil.which("notify-send") is not None:
+            subprocess.run(["notify-send", summary, body], stderr=subprocess.DEVNULL)
+
+# ----------------------------------------------------------------------
+# Desktop Entry Setup
+# ----------------------------------------------------------------------
+
+def perform_first_time_setup():
+    script_path = os.path.abspath(sys.argv[0])
+    script_dir = os.path.dirname(script_path)
+    
+    icon_dest_dir = os.path.expanduser("~/.local/share/icons")
+    os.makedirs(icon_dest_dir, exist_ok=True)
+    icon_dest_path = os.path.join(icon_dest_dir, "direct-screenshot-logo.png")
+    
+    logo_src = os.path.join(script_dir, "logo.png")
+    if os.path.exists(logo_src):
+        try:
+            shutil.copy2(logo_src, icon_dest_path)
+            icon_path = icon_dest_path
+        except Exception:
+            icon_path = "screenshot"
+    else:
+        icon_path = "screenshot"
+
+    desktop_dir = os.path.expanduser("~/.local/share/applications")
+    os.makedirs(desktop_dir, exist_ok=True)
+    desktop_path = os.path.join(desktop_dir, "direct-screenshot.desktop")
+    
+    desktop_content = f"""[Desktop Entry]
+Name={t('app_title')}
+Comment=Screenshot Utility with Clipboard and Save support
+Exec={script_path}
+Icon={icon_path}
+Terminal=false
+Type=Application
+Categories=Utility;Graphics;
+StartupNotify=false
+"""
+    try:
+        with open(desktop_path, "w") as f:
+            f.write(desktop_content)
+        subprocess.run(["update-desktop-database", desktop_dir], stderr=subprocess.DEVNULL)
+    except Exception as e:
+        print(f"Failed to create desktop entry: {e}", file=sys.stderr)
+
+# ----------------------------------------------------------------------
+# Screenshot Engine (gnome-screenshot wrapper)
+# ----------------------------------------------------------------------
+
+def capture_screenshot(mode="area"):
+    temp_path = os.path.join(GLib.get_user_cache_dir(), "direct_paste_temp.png")
+    
+    # Pre-clean stale temp screenshot file to ensure a new capture is verified
+    if os.path.exists(temp_path):
+        try:
+            os.remove(temp_path)
+        except Exception:
+            pass
+
+    cmd = ["gnome-screenshot"]
+    if mode == "area":
+        cmd.append("-a")
+    elif mode == "window":
+        cmd.append("-w")
+    cmd.extend(["-f", temp_path])
+        
+    try:
+        res_run = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if res_run.returncode == 0 and os.path.exists(temp_path):
+            return temp_path
+    except Exception as e:
+        print(f"gnome-screenshot execution failed: {e}", file=sys.stderr)
+        
+    return None
+
+
+def gsettings_key_exists(schema, key):
+    res = subprocess.run(['gsettings', 'range', schema, key], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return res.returncode == 0
+
+
+# ----------------------------------------------------------------------
+# GSettings Keyboard Shortcut Mappings Scanner
+# ----------------------------------------------------------------------
+
+
+def get_current_shortcut_mappings():
+    mappings = {
+        'Print': ('disabled', 'both'),
+        '<Ctrl>Print': ('disabled', 'both'),
+        '<Shift>Print': ('disabled', 'both'),
+        '<Alt>Print': ('disabled', 'both')
+    }
+    if shutil.which("gsettings") is None:
+        return mappings
+
+    try:
+        res = subprocess.run(
+            ['gsettings', 'get', 'org.gnome.settings-daemon.plugins.media-keys', 'custom-keybindings'],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+        )
+        current = res.stdout.strip()
+        if not current or current == "@as []":
+            return mappings
+
+        bindings_list = current.replace('[', '').replace(']', '').replace("'", "").split(', ')
+        bindings_list = [b for b in bindings_list if b]
+
+        schema = "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding"
+        for path in bindings_list:
+            res_bind = subprocess.run(
+                ['gsettings', 'get', f"{schema}:{path}", 'binding'],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+            )
+            binding_val = res_bind.stdout.strip().replace("'", "")
+            
+            res_cmd = subprocess.run(
+                ['gsettings', 'get', f"{schema}:{path}", 'command'],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+            )
+            command_val = res_cmd.stdout.strip().replace("'", "")
+
+            if binding_val in mappings:
+                words = command_val.split()
+                # Check for the executable name as a substring of any word (e.g. path/to/direct-screenshot)
+                if any("direct-screenshot" in w for w in words):
+                    mode = 'area'
+                    if "-s" in words or "--screen" in words:
+                        mode = 'screen'
+                    elif "-w" in words or "--window" in words:
+                        mode = 'window'
+                    
+                    action = 'both'
+                    if "--no-clipboard" in words:
+                        action = 'save'
+                    elif "--no-save" in words:
+                        action = 'clipboard'
+
+                    mappings[binding_val] = (mode, action)
+    except Exception as e:
+        print(f"Error scanning GSettings shortcuts: {e}", file=sys.stderr)
+
+    return mappings
+
+# ----------------------------------------------------------------------
+# GTK3 GUI Options & ShortKey Configurator Dialog (Only loaded in GUI mode)
+# ----------------------------------------------------------------------
+
+class ScreenshotDialog(object):
+    def __new__(cls, *args, **kwargs):
+        global Gtk, Gdk
+        from gi.repository import Gtk, Gdk
+
+        class _ScreenshotDialogInner(Gtk.Window):
+            def __init__(self):
+                super().__init__(title=t('app_title'))
+                self.set_default_size(580, 420)
+                self.set_resizable(False)
+                self.set_position(Gtk.WindowPosition.CENTER)
+                self.set_border_width(18)
+
+                # GTK Theme styling
+                style_provider = Gtk.CssProvider()
+                css = b"""
+                .title-label {
+                    font-weight: bold;
+                    font-size: 1.05em;
+                    margin-bottom: 6px;
+                }
+                .section-box {
+                    margin-bottom: 16px;
+                    border: 1px solid @border_color;
+                    border-radius: 6px;
+                    padding: 12px;
+                }
+                .suggested-action {
+                    background-image: linear-gradient(to bottom, #3583e4, #1b6acb);
+                    color: white;
+                    text-shadow: 0 1px rgba(0, 0, 0, 0.2);
+                    border-color: #124d97;
+                }
+                .suggested-action:hover {
+                    background-image: linear-gradient(to bottom, #478fe6, #2172d5);
+                }
+                .suggested-action:disabled {
+                    background-image: none;
+                    background-color: rgba(150, 150, 150, 0.15);
+                    color: rgba(150, 150, 150, 0.5);
+                    border-color: rgba(150, 150, 150, 0.2);
+                    text-shadow: none;
+                }
+                """
+                style_provider.load_from_data(css)
+                Gtk.StyleContext.add_provider_for_screen(
+                    Gdk.Screen.get_default(),
+                    style_provider,
+                    Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+                )
+
+                # Load persisted user settings
+                self.app_settings = load_settings()
+
+                # Sync theme settings with GNOME System dark mode preference
+                self.setup_dark_mode_sync()
+
+                # Header Bar
+                hb = Gtk.HeaderBar()
+                hb.set_show_close_button(True)
+                hb.set_title(t('app_title'))
+                self.set_titlebar(hb)
+
+                # Store capture button as instance variable to mutate sensitivity
+                self.btn_capture = Gtk.Button(label=t('capture'))
+                self.btn_capture.get_style_context().add_class("suggested-action")
+                self.btn_capture.connect("clicked", self.on_capture_clicked)
+                hb.pack_end(self.btn_capture)
+
+                # Main container
+                vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+                self.add(vbox)
+
+                # SECTION 1: Quick Capture Configuration Frame
+                frame_capture = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+                frame_capture.get_style_context().add_class("section-box")
+                
+                lbl_cap_title = Gtk.Label(label=t('quick_capture'))
+                lbl_cap_title.set_xalign(0.0)
+                lbl_cap_title.get_style_context().add_class("title-label")
+                frame_capture.pack_start(lbl_cap_title, False, False, 0)
+
+                self.rad_screen = Gtk.RadioButton.new_with_label_from_widget(None, t('grab_screen'))
+                self.rad_window = Gtk.RadioButton.new_with_label_from_widget(self.rad_screen, t('grab_window'))
+                self.rad_area = Gtk.RadioButton.new_with_label_from_widget(self.rad_screen, t('grab_area'))
+                self.rad_area.set_active(True)
+                
+                frame_capture.pack_start(self.rad_screen, False, False, 0)
+                frame_capture.pack_start(self.rad_window, False, False, 0)
+                frame_capture.pack_start(self.rad_area, False, False, 0)
+
+                # Clipboard Target Checkbox
+                self.chk_clipboard = Gtk.CheckButton(label=t('copy_clipboard'))
+                self.chk_clipboard.set_active(self.app_settings.get('clipboard_enabled', True))
+
+                # Save Target Folder selection box
+                box_save = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+                self.chk_save = Gtk.CheckButton(label=t('save_folder'))
+                self.chk_save.set_active(self.app_settings.get('save_enabled', True))
+                
+                self.folder_chooser = Gtk.FileChooserButton(title=t('select_folder'), action=Gtk.FileChooserAction.SELECT_FOLDER)
+                self.folder_chooser.set_current_folder(self.app_settings.get('save_dir'))
+
+                # Connect checkbox toggle to FileChooserButton sensitivity
+                def on_save_toggled(widget):
+                    self.folder_chooser.set_sensitive(widget.get_active())
+                self.chk_save.connect("toggled", on_save_toggled)
+                on_save_toggled(self.chk_save)
+
+                box_save.pack_start(self.chk_save, False, False, 0)
+                box_save.pack_start(self.folder_chooser, True, True, 0)
+
+                frame_capture.pack_start(self.chk_clipboard, False, False, 6)
+                frame_capture.pack_start(box_save, False, False, 0)
+
+                vbox.pack_start(frame_capture, False, False, 0)
+
+                # Connect toggle events to dynamically enable/disable the capture button
+                self.chk_clipboard.connect("toggled", lambda w: self.update_capture_button_sensitivity())
+                self.chk_save.connect("toggled", lambda w: self.update_capture_button_sensitivity())
+
+                # SECTION 2: Keyboard Shortcut Mapping Frame
+                frame_shortcuts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+                frame_shortcuts.get_style_context().add_class("section-box")
+                
+                lbl_sh_title = Gtk.Label(label=t('shortcuts_config'))
+                lbl_sh_title.set_xalign(0.0)
+                lbl_sh_title.get_style_context().add_class("title-label")
+                frame_shortcuts.pack_start(lbl_sh_title, False, False, 0)
+
+                # Grid for mapping keys to dropdown options
+                grid = Gtk.Grid()
+                grid.set_column_spacing(12)
+                grid.set_row_spacing(10)
+                frame_shortcuts.pack_start(grid, True, True, 4)
+
+                # Read current configurations to pre-select dropdown options
+                current_mappings = get_current_shortcut_mappings()
+
+                # Row 1: Print
+                lbl_key1 = Gtk.Label(label="PrtSc :")
+                lbl_key1.set_xalign(1.0)
+                self.cb_mode_print = self.create_mode_combobox(current_mappings['Print'][0])
+                self.cb_action_print = self.create_action_combobox(current_mappings['Print'][1])
+                grid.attach(lbl_key1, 0, 0, 1, 1)
+                grid.attach(self.cb_mode_print, 1, 0, 1, 1)
+                grid.attach(self.cb_action_print, 2, 0, 1, 1)
+
+                # Row 2: Ctrl+Print
+                lbl_key2 = Gtk.Label(label="Ctrl + PrtSc :")
+                lbl_key2.set_xalign(1.0)
+                self.cb_mode_ctrl = self.create_mode_combobox(current_mappings['<Ctrl>Print'][0])
+                self.cb_action_ctrl = self.create_action_combobox(current_mappings['<Ctrl>Print'][1])
+                grid.attach(lbl_key2, 0, 1, 1, 1)
+                grid.attach(self.cb_mode_ctrl, 1, 1, 1, 1)
+                grid.attach(self.cb_action_ctrl, 2, 1, 1, 1)
+
+                # Row 3: Shift+Print
+                lbl_key3 = Gtk.Label(label="Shift + PrtSc :")
+                lbl_key3.set_xalign(1.0)
+                self.cb_mode_shift = self.create_mode_combobox(current_mappings['<Shift>Print'][0])
+                self.cb_action_shift = self.create_action_combobox(current_mappings['<Shift>Print'][1])
+                grid.attach(lbl_key3, 0, 2, 1, 1)
+                grid.attach(self.cb_mode_shift, 1, 2, 1, 1)
+                grid.attach(self.cb_action_shift, 2, 2, 1, 1)
+
+                # Row 4: Alt+Print
+                lbl_key4 = Gtk.Label(label="Alt + PrtSc :")
+                lbl_key4.set_xalign(1.0)
+                self.cb_mode_alt = self.create_mode_combobox(current_mappings['<Alt>Print'][0])
+                self.cb_action_alt = self.create_action_combobox(current_mappings['<Alt>Print'][1])
+                grid.attach(lbl_key4, 0, 3, 1, 1)
+                grid.attach(self.cb_mode_alt, 1, 3, 1, 1)
+                grid.attach(self.cb_action_alt, 2, 3, 1, 1)
+
+                # Selection changed listener to dynamically gray out action dropdowns
+                def on_mode_changed(combobox, action_combobox):
+                    active_id = combobox.get_active_id()
+                    if active_id == "disabled":
+                        action_combobox.set_sensitive(False)
+                    else:
+                        action_combobox.set_sensitive(True)
+
+                self.cb_mode_print.connect("changed", on_mode_changed, self.cb_action_print)
+                self.cb_mode_ctrl.connect("changed", on_mode_changed, self.cb_action_ctrl)
+                self.cb_mode_shift.connect("changed", on_mode_changed, self.cb_action_shift)
+                self.cb_mode_alt.connect("changed", on_mode_changed, self.cb_action_alt)
+
+                # Trigger initial state checks
+                on_mode_changed(self.cb_mode_print, self.cb_action_print)
+                on_mode_changed(self.cb_mode_ctrl, self.cb_action_ctrl)
+                on_mode_changed(self.cb_mode_shift, self.cb_action_shift)
+                on_mode_changed(self.cb_mode_alt, self.cb_action_alt)
+
+                # Apply Button
+                btn_apply = Gtk.Button(label=t('apply_shortcuts'))
+                btn_apply.connect("clicked", self.on_apply_shortcuts_clicked)
+                frame_shortcuts.pack_start(btn_apply, False, False, 8)
+
+                vbox.pack_start(frame_shortcuts, False, False, 0)
+
+                # Initialize sensitivity state of capture button
+                self.update_capture_button_sensitivity()
+
+                self.connect("destroy", Gtk.main_quit)
+                self.show_all()
+
+            def update_capture_button_sensitivity(self):
+                any_selected = self.chk_clipboard.get_active() or self.chk_save.get_active()
+                self.btn_capture.set_sensitive(any_selected)
+
+            def create_mode_combobox(self, active_id):
+                cb = Gtk.ComboBoxText()
+                cb.append("disabled", t('disabled_gnome'))
+                cb.append("area", t('opt_area'))
+                cb.append("screen", t('opt_screen'))
+                cb.append("window", t('opt_window'))
+                cb.set_active_id(active_id)
+                cb.set_hexpand(True)
+                return cb
+
+            def create_action_combobox(self, active_id):
+                cb = Gtk.ComboBoxText()
+                cb.append("both", t('opt_both'))
+                cb.append("clipboard", t('opt_clipboard'))
+                cb.append("save", t('opt_save'))
+                cb.set_active_id(active_id)
+                cb.set_hexpand(True)
+                return cb
+
+            def setup_dark_mode_sync(self):
+                try:
+                    self.settings = Gio.Settings.new("org.gnome.desktop.interface")
+                    
+                    def update_theme(*args):
+                        is_dark = False
+                        
+                        # 1. Sync GSettings gtk-theme to GTK3 gtk-theme-name
+                        try:
+                            theme_name = self.settings.get_string("gtk-theme")
+                            Gtk.Settings.get_default().set_property("gtk-theme-name", theme_name)
+                            if "dark" in theme_name.lower():
+                                is_dark = True
+                        except Exception:
+                            pass
+
+                        # 2. Sync GSettings color-scheme
+                        try:
+                            color_scheme = self.settings.get_string("color-scheme")
+                            if "prefer-dark" in color_scheme:
+                                is_dark = True
+                        except Exception:
+                            pass
+                            
+                        # 3. Apply prefer dark theme property
+                        Gtk.Settings.get_default().set_property("gtk-application-prefer-dark-theme", is_dark)
+                    
+                    self.settings.connect("changed::gtk-theme", update_theme)
+                    self.settings.connect("changed::color-scheme", update_theme)
+                    update_theme()
+                except Exception:
+                    # Fallback to check GtkTheme name properties
+                    try:
+                        gtk_settings = Gtk.Settings.get_default()
+                        theme_name = gtk_settings.get_property("gtk-theme-name").lower()
+                        if "dark" in theme_name:
+                            gtk_settings.set_property("gtk-application-prefer-dark-theme", True)
+                    except Exception:
+                        pass
+
+            def on_capture_clicked(self, widget):
+                mode = "screen"
+                if self.rad_window.get_active():
+                    mode = "window"
+                elif self.rad_area.get_active():
+                    mode = "area"
+                    
+                copy_clipboard = self.chk_clipboard.get_active()
+                save_folder = self.chk_save.get_active()
+                save_dir = self.folder_chooser.get_filename()
+
+                # Save persistent configuration settings
+                self.app_settings['clipboard_enabled'] = copy_clipboard
+                self.app_settings['save_enabled'] = save_folder
+                if save_dir:
+                    self.app_settings['save_dir'] = save_dir
+                save_settings(self.app_settings)
+
+                self.hide()
+                GLib.timeout_add(150, self.do_capture, mode, copy_clipboard, save_folder, save_dir)
+
+            def do_capture(self, mode, copy_clipboard, save_folder, save_dir):
+                temp_path = capture_screenshot(mode=mode)
+                if not temp_path:
+                    self.show_all()
+                    return False
+
+                process_screenshot_result_with_dir(temp_path, copy_clipboard, save_folder, save_dir)
+                Gtk.main_quit()
+                return False
+
+            def on_apply_shortcuts_clicked(self, widget):
+                dialog = Gtk.MessageDialog(
+                    transient_for=self,
+                    flags=0,
+                    message_type=Gtk.MessageType.QUESTION,
+                    buttons=Gtk.ButtonsType.YES_NO,
+                    text=t('confirm_text')
+                )
+                response = dialog.run()
+                dialog.destroy()
+
+                if response != Gtk.ResponseType.YES:
+                    return
+
+                selections = {
+                    'Print': (self.cb_mode_print.get_active_id(), self.cb_action_print.get_active_id()),
+                    '<Ctrl>Print': (self.cb_mode_ctrl.get_active_id(), self.cb_action_ctrl.get_active_id()),
+                    '<Shift>Print': (self.cb_mode_shift.get_active_id(), self.cb_action_shift.get_active_id()),
+                    '<Alt>Print': (self.cb_mode_alt.get_active_id(), self.cb_action_alt.get_active_id())
+                }
+
+                script_path = os.path.abspath(sys.argv[0])
+                schema = "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding"
+                custom_base = "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings"
+
+                default_bindings = {
+                    'Print': ('org.gnome.shell.keybindings', 'show-screenshot-ui'),
+                    '<Ctrl>Print': ('org.gnome.shell.keybindings', 'screenshot'),
+                    '<Shift>Print': ('org.gnome.shell.keybindings', 'screenshot-area'),
+                    '<Alt>Print': ('org.gnome.shell.keybindings', 'screenshot-window')
+                }
+
+                try:
+                    res = subprocess.run(
+                        ['gsettings', 'get', 'org.gnome.settings-daemon.plugins.media-keys', 'custom-keybindings'],
+                        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+                    )
+                    current_customs = res.stdout.strip()
+                    
+                    bindings_list = []
+                    if current_customs and current_customs != "@as []":
+                        bindings_list = current_customs.replace('[', '').replace(']', '').replace("'", "").split(', ')
+                        bindings_list = [b for b in bindings_list if b]
+                except Exception as e:
+                    print(f"Failed to read custom shortcuts list: {e}", file=sys.stderr)
+                    return
+
+                for binding_key, (mode, action) in selections.items():
+                    path_suffix = binding_key.lower().replace('<', '').replace('>', '')
+                    base_path = f"{custom_base}/direct-paste-{path_suffix}/"
+                    
+                    g_schema, g_key = default_bindings[binding_key]
+                    
+                    if mode == 'disabled':
+                        if base_path in bindings_list:
+                            bindings_list.remove(base_path)
+                        if gsettings_key_exists(g_schema, g_key):
+                            subprocess.run(['gsettings', 'reset', g_schema, g_key], stderr=subprocess.DEVNULL)
+                    else:
+                        if base_path not in bindings_list:
+                            bindings_list.append(base_path)
+                        
+                        cmd = script_path
+                        if mode == 'screen':
+                            cmd += " -s"
+                        elif mode == 'window':
+                            cmd += " -w"
+                        else:
+                            cmd += " -a"
+
+                        if action == 'save':
+                            cmd += " --no-clipboard"
+                        elif action == 'clipboard':
+                            cmd += " --no-save"
+
+                        subprocess.run(['gsettings', 'set', f"{schema}:{base_path}", 'name', f"{t('custom_shortcut_name')} ({binding_key})"], stderr=subprocess.DEVNULL)
+                        subprocess.run(['gsettings', 'set', f"{schema}:{base_path}", 'command', cmd], stderr=subprocess.DEVNULL)
+                        subprocess.run(['gsettings', 'set', f"{schema}:{base_path}", 'binding', binding_key], stderr=subprocess.DEVNULL)
+
+                        if gsettings_key_exists(g_schema, g_key):
+                            subprocess.run(['gsettings', 'set', g_schema, g_key, '[]'], stderr=subprocess.DEVNULL)
+
+
+                new_list = "[" + ", ".join([f"'{b}'" for b in bindings_list]) + "]"
+                try:
+                    subprocess.run(['gsettings', 'set', 'org.gnome.settings-daemon.plugins.media-keys', 'custom-keybindings', new_list], check=True)
+                    send_notification(t('notification_applied_title'), t('notification_applied_body'))
+                except Exception as e:
+                    print(f"Failed to save custom keybindings list: {e}", file=sys.stderr)
+
+        return _ScreenshotDialogInner(*args, **kwargs)
+
+# ----------------------------------------------------------------------
+# Result Processing Logic
+# ----------------------------------------------------------------------
+
+def process_screenshot_result_with_dir(temp_path, copy_clipboard, save_folder, save_dir, custom_dest_path=None):
+    if not os.path.exists(temp_path):
+        send_notification(t('error_file_title'), t('error_file_body'))
+        return
+
+    copied = False
+    saved = False
+    saved_path = ""
+
+    if copy_clipboard:
+        copied = inject_to_clipboard(temp_path)
+
+    if save_folder or custom_dest_path:
+        if custom_dest_path:
+            dest_path = custom_dest_path
+        else:
+            os.makedirs(save_dir, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            dest_path = os.path.join(save_dir, f"screenshot_{timestamp}.png")
+        
+        try:
+            shutil.copy2(temp_path, dest_path)
+            saved = True
+            saved_path = dest_path
+        except Exception as e:
+            print(f"Failed to save screenshot file: {e}", file=sys.stderr)
+
+    filename_base = os.path.basename(saved_path) if saved_path else ""
+
+    if copied and saved:
+        send_notification(
+            t('notification_saved_copied_title'),
+            t('notification_saved_copied_body').format(filename=filename_base)
+        )
+    elif copied:
+        send_notification(t('notification_copied_title'), t('notification_copied_body'))
+    elif saved:
+        send_notification(
+            t('notification_saved_title'),
+            t('notification_saved_body').format(filename=filename_base)
+        )
+    else:
+        send_notification(t('notification_complete_title'), t('notification_complete_body'))
+
+# ----------------------------------------------------------------------
+# Main Execution Entry Point
+# ----------------------------------------------------------------------
+
+def main():
+    # 1. Enforce strict dependency validation in terminal on execution.
+    # If gnome-screenshot or copyq is missing, fail immediately and instruct the user how to install.
+    missing = []
+    if not is_gnome_screenshot_installed():
+        missing.append("gnome-screenshot")
+    if not is_copyq_installed():
+        missing.append("copyq")
+
+    if missing:
+        pkgs_str = " ".join(missing)
+        err_msg_ko = f"\n[오류] 필수 시스템 패키지({', '.join(missing)})가 설치되어 있지 않습니다.\n설치 명령어: sudo apt-get install -y {pkgs_str}\n"
+        err_msg_en = f"\n[Error] Required system packages ({', '.join(missing)}) are not installed.\nInstallation command: sudo apt-get install -y {pkgs_str}\n"
+        
+        err_msg = err_msg_ko if LANG == "ko" else err_msg_en
+        print(err_msg, file=sys.stderr)
+        sys.exit(1)
+
+    # 2. Both dependencies are confirmed to be installed. Register desktop launcher.
+    perform_first_time_setup()
+
+    parser = argparse.ArgumentParser(
+        description="Modern Screenshot Utility with CopyQ Multi-format support."
+    )
+    parser.add_argument(
+        '-i', '--interactive', action='store_true',
+        help="Run interactive GUI selector dialog"
+    )
+    parser.add_argument(
+        '-a', '--area', action='store_true',
+        help="Select a custom screen area to grab"
+    )
+    parser.add_argument(
+        '-w', '--window', action='store_true',
+        help="Select a window to grab"
+    )
+    parser.add_argument(
+        '-s', '--screen', action='store_true',
+        help="Grab the entire screen instantly"
+    )
+    parser.add_argument(
+        '--no-clipboard', action='store_true',
+        help="Do not copy screenshot to clipboard"
+    )
+    parser.add_argument(
+        '--no-save', action='store_true',
+        help="Do not save screenshot file to Screenshots folder"
+    )
+    parser.add_argument(
+        '-f', '--file', type=str, default=None, metavar='PATH',
+        help="Save screenshot directly to specified PATH"
+    )
+
+    args = parser.parse_args()
+
+    # GUI Mode: Default execution if no capture mode flags are specified
+    is_mode_specified = args.area or args.window or args.screen
+    run_gui = args.interactive or not is_mode_specified
+
+    if run_gui:
+        global Gtk
+        from gi.repository import Gtk
+        dialog = ScreenshotDialog()
+        Gtk.main()
+    else:
+        mode = "area"
+        if args.window:
+            mode = "window"
+        elif args.screen:
+            mode = "screen"
+            
+        copy_clipboard = not args.no_clipboard
+        save_folder = not args.no_save if args.file is None else False
+
+        # Load persisted settings for default folder path in CLI execution
+        app_settings = load_settings()
+        default_save_dir = app_settings.get('save_dir', os.path.expanduser("~/Pictures/Screenshots"))
+
+        temp_path = capture_screenshot(mode=mode)
+        if temp_path:
+            process_screenshot_result_with_dir(
+                temp_path,
+                copy_clipboard=copy_clipboard,
+                save_folder=save_folder,
+                save_dir=default_save_dir,
+                custom_dest_path=args.file
+            )
+            try:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except Exception:
+                pass
+        else:
+            print("Screenshot cancelled or failed.", file=sys.stderr)
+
+if __name__ == "__main__":
+    main()
