@@ -1,4 +1,4 @@
-# 🐧 direct-paste-wine 🍷
+# 🐧 direct-screenshot 🍷
 
 <p align="center">
   <img src="logo.png" width="256" alt="Main Logo" />
@@ -10,7 +10,7 @@
 
 ## Features
 
-- **Wayland & X11 환경 지원:** 리눅스 데스크톱 환경(`Ubuntu 24.04` 등)에서 안전하게 동작하도록 `gnome-screenshot`에 기반해 즉시 캡처를 수행합니다.
+- **Wayland & X11 환경 지원:** 리눅스 데스크톱 환경(`Ubuntu 24.04` 등)에서 안정적으로 동작하도록 `gnome-screenshot`에 기반해 즉시 캡처를 수행합니다.
   - 단, 백그라운드 클립보드 데이터 주입을 위해 XWayland 호환성이 필요합니다.
 - **Wine 클립보드 호환성:** CopyQ 엔진을 활용하여 단순한 `.PNG` 형식이 아닌 `.BMP` 형식을 포함한 14가지 MIME 타입으로 클립보드 데이터를 동시 주입합니다.
 - **CLI 및 GUI 제공:** CLI 옵션 및 GUI 대화상자를 모두 제공하며, GUI 내에서 손쉽게 단축키 매핑 적용이 가능합니다.
@@ -27,8 +27,8 @@ sudo apt install gnome-screenshot copyq python3-gi gir1.2-gtk-3.0 -y
 ## How to Run
 
 ```bash
-git clone https://github.com/kmbzn/direct-paste-wine.git
-cd direct-paste-wine
+git clone https://github.com/kmbzn/direct-screenshot.git
+cd direct-screenshot
 chmod +x direct-screenshot
 ./direct-screenshot
 ```

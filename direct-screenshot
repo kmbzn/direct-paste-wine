@@ -18,12 +18,12 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 
-import sys
 import os
+import sys
+import json
+import shutil
 import argparse
 import subprocess
-import shutil
-import json
 from datetime import datetime
 
 import gi
@@ -302,16 +302,13 @@ def capture_screenshot(mode="area"):
         
     return None
 
-
 def gsettings_key_exists(schema, key):
     res = subprocess.run(['gsettings', 'range', schema, key], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return res.returncode == 0
 
-
 # ----------------------------------------------------------------------
 # GSettings Keyboard Shortcut Mappings Scanner
 # ----------------------------------------------------------------------
-
 
 def get_current_shortcut_mappings():
     mappings = {
@@ -757,7 +754,6 @@ class ScreenshotDialog(object):
 
                         if gsettings_key_exists(g_schema, g_key):
                             subprocess.run(['gsettings', 'set', g_schema, g_key, '[]'], stderr=subprocess.DEVNULL)
-
 
                 new_list = "[" + ", ".join([f"'{b}'" for b in bindings_list]) + "]"
                 try:
