@@ -27,7 +27,8 @@ sudo apt install gnome-screenshot copyq python3-gi gir1.2-gtk-3.0 -y
 ## How to Run
 
 ```bash
-git
+git clone https://github.com/kmbzn/direct-paste-wine.git
+cd direct-paste-wine
 chmod +x direct-screenshot
 ./direct-screenshot
 ```
